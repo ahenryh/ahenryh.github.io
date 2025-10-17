@@ -1,0 +1,43 @@
+# -*- coding: utf-8 -*
+import pandas as pd
+from flask import Flask, send_file, Response, redirect, url_for
+import folium
+app = Flask(__name__)
+
+df_merged = pd.read_excel("Geocodage_corrige.xlsx")
+
+#création d'une carte avec folium
+center_lat = df_merged['latitude'].mean()
+center_lon = df_merged['longitude'].mean()
+m = folium.Map(location=[center_lat, center_lon], zoom_start=6)
+for _, row in df_merged.iterrows():
+    if pd.notna(row['latitude']) and pd.notna(row['longitude']):
+        folium.Marker(
+            location=[row['latitude'], row['longitude']],
+            popup=f"{row['code_usine']} - {row['Adresse  ']}",
+        ).add_to(m)
+m.save("Carte_geocodage.html")
+
+
+@app.route('/map')
+def map_view():
+    # Retourne la carte en mémoire 
+    html = m.get_root().render()
+    return Response(html, mimetype='text/html')
+
+
+@app.route('/map_file')
+def map_file():
+    # envoi
+    m.save('Carte_geocodage.html')
+    return send_file('Carte_geocodage.html', mimetype='text/html')
+
+
+@app.route('/')
+def index():
+    # redirige directement vers la vue de la carte
+    return redirect(url_for('map_view'))
+
+
+if __name__ == '__main__':
+    app.run(port=5050, debug = False) # Permet de lancer le serveur directement depuis python en exécutant le programme
