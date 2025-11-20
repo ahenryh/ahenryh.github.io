@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Histogramme des nationalités par EPCI</title>
+
+  {{ bokeh_css | safe }}
+  {{ bokeh_js | safe }}
+
+  <style>
+    body { font-family: Arial, sans-serif; margin: 18px; }
+    label { margin-right: 8px; }
+    select { margin-right: 16px; }
+    #plot { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Nationalités des personnes d'origine étrangère dans l'EPCI</h1>
+
+  <label for="region">Région :</label>
+  <select id="region">
+    <option value="">--Choisir une région--</option>
+    {% for region in regions %}
+      <option value="{{ region }}">{{ region }}</option>
+    {% endfor %}
+  </select>
+
+  <label for="epci">EPCI :</label>
+  <select id="epci">
+    <option value="">--Choisir une EPCI--</option>
+  </select>
+
+  <div id="plot"></div>
+
+  <script>
+    function clearPlotContainer() {
+      document.getElementById("plot").innerHTML = "";
+    }
+
+    async function loadEPCIs(region) {
+      if (!region) {
+        document.getElementById("epci").innerHTML = "<option value=''>--Choisir une EPCI--</option>";
+        clearPlotContainer();
+        return;
+      }
+
+      const resp = await fetch(`/get_epci?region=${encodeURIComponent(region)}`);
+      const epcis = await resp.json();
+
+      const sel = document.getElementById("epci");
+      sel.innerHTML = "<option value=''>--Choisir une EPCI--</option>";
+
+      epcis.forEach(e => {
+        const o = document.createElement("option");
+        o.value = o.text = e;
+        sel.appendChild(o);
+      });
+
+      if (epcis.length > 0) {
+        sel.selectedIndex = 1;
+        await loadPlot(region, epcis[0]);
+      } else {
+        clearPlotContainer();
+      }
+    }
+
+    async function loadPlot(region, epci) {
+      clearPlotContainer();
+      if (!region || !epci) return;
+
+      const resp = await fetch(`/get_data_plot?region=${encodeURIComponent(region)}&epci=${encodeURIComponent(epci)}`);
+      const data = await resp.json();
+
+      if (data.error) {
+        document.getElementById("plot").innerText = data.error;
+        return;
+      }
+      
+      Bokeh.embed.embed_item(data);
+    }
+
+    document.getElementById("region").addEventListener("change", function() {
+      loadEPCIs(this.value);
+    });
+
+    document.getElementById("epci").addEventListener("change", function() {
+      const region = document.getElementById("region").value;
+      loadPlot(region, this.value);
+    });
+
+    (function initial() {
+      const regionSel = document.getElementById("region");
+      if (regionSel.options.length > 1) {
+        regionSel.selectedIndex = 1;
+        loadEPCIs(regionSel.value);
+      }
+    })();
+  </script>
+</body>
+</html>
