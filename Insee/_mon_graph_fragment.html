@@ -1,0 +1,26 @@
+{{ bokeh_css | safe }}
+{{ bokeh_js | safe }}
+
+<div class="mon-graph-fragment mt-3">
+  <h4>Exemple : Mon Graphique</h4>
+  <div id="monplot"></div>
+</div>
+
+<script>
+async function loadMonGraph(){
+  try{
+    const resp = await fetch('/mongraph/get_data');
+    const data = await resp.json();
+    Bokeh.embed.embed_item(data);
+  }catch(e){
+    console.error('Could not load mon graph:', e);
+    document.getElementById('monplot').innerText = 'Erreur de chargement du graphique.';
+  }
+}
+
+// Auto load when fragment is injected
+document.addEventListener('DOMContentLoaded', function(){
+  // small delay to ensure fragment injection
+  setTimeout(loadMonGraph, 150);
+});
+</script>
