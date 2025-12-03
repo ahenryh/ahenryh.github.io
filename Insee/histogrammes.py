@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, make_response
+from flask import Blueprint, render_template, request, make_response
 import pandas as pd
 import json
 from sqlalchemy import create_engine
@@ -11,40 +11,52 @@ from bokeh.transform import factor_cmap
 import logging
 import bokeh
 
-app = Flask(__name__)
+bp = Blueprint('histogrammes', __name__, template_folder='templates')
 logging.basicConfig(level=logging.INFO)
 
 logging.info("Bokeh Python version: %s", bokeh.__version__)
 
-# --- Accès DB ---
-engine = create_engine("postgresql://postgres:postgres@localhost/savoie")
-
-# --- Traitement des données ---
-query = """
-SELECT 
-    "nom" AS epci_nom,
-    "EPCI" AS epci_code,
-    "region_name" AS region,
-    "INAT_BIS",
-    "NAT_rec3",
-    "total_s"
-FROM poisson.inat_nat_epci_region
-WHERE "INAT_BIS" IN ('Français par acquisition','Etranger')
-"""
-df = pd.read_sql(query, engine)
-
-df["total_s"] = pd.to_numeric(df["total_s"], errors="coerce")
-df = df.dropna(subset=["total_s"])
-df = df[df["total_s"] > 0]
-
-agg_df = df.groupby(["region", "epci_nom", "NAT_rec3"], as_index=False)["total_s"].sum()
-
 # --- Bokeh resources CDN (fiable à 100%) ---
 RES = Resources(mode="cdn")
 
-@app.route("/histo_nat")
+# Lazy-loaded cached data
+_agg_df = None
+
+def get_agg_df():
+    """Load and cache the aggregated DataFrame. Safe to call multiple times."""
+    global _agg_df
+    if _agg_df is not None:
+        return _agg_df
+
+    try:
+        engine = create_engine("postgresql://postgres:postgres@localhost/savoie")
+        query = """
+        SELECT 
+            "nom" AS epci_nom,
+            "EPCI" AS epci_code,
+            "region_name" AS region,
+            "INAT_BIS",
+            "NAT_rec3",
+            "total_s"
+        FROM poisson.inat_nat_epci_region
+        WHERE "INAT_BIS" IN ('Français par acquisition','Etranger')
+        """
+
+        df = pd.read_sql(query, engine)
+        df["total_s"] = pd.to_numeric(df["total_s"], errors="coerce")
+        df = df.dropna(subset=["total_s"]) if not df.empty else df
+        df = df[df["total_s"] > 0] if not df.empty else df
+        _agg_df = df.groupby(["region", "epci_nom", "NAT_rec3"], as_index=False)["total_s"].sum()
+    except Exception as e:
+        logging.warning('Could not load histogram data: %s', e)
+        _agg_df = pd.DataFrame()
+
+    return _agg_df
+
+@bp.route("/histo_nat")
 def index():
-    regions = sorted(agg_df["region"].unique())
+    df = get_agg_df()
+    regions = sorted(df["region"].unique()) if not df.empty else []
     return render_template(
         "histo_nat.html",
         regions=regions,
@@ -52,18 +64,22 @@ def index():
         bokeh_css=RES.render_css(),
     )
 
-@app.route("/get_epci")
+@bp.route("/get_epci")
 def get_epci():
     region = request.args.get("region", "")
-    epcis = sorted(agg_df[agg_df["region"] == region]["epci_nom"].unique())
+    df = get_agg_df()
+    if df.empty:
+        return make_response(json.dumps([]), 200, {"Content-Type": "application/json"})
+    epcis = sorted(df[df["region"] == region]["epci_nom"].unique())
     return make_response(json.dumps(epcis), 200, {"Content-Type": "application/json"})
 
-@app.route("/get_data_plot")
+@bp.route("/get_data_plot")
 def get_data_plot():
     region = request.args.get("region", "")
     epci = request.args.get("epci", "")
 
-    df_plot = agg_df[(agg_df["region"] == region) & (agg_df["epci_nom"] == epci)]
+    df_all = get_agg_df()
+    df_plot = df_all[(df_all["region"] == region) & (df_all["epci_nom"] == epci)] if not df_all.empty else pd.DataFrame()
 
     if df_plot.empty:
         return make_response(
@@ -113,4 +129,8 @@ def get_data_plot():
     )
 
 if __name__ == "__main__":
+    # Run standalone for debugging
+    from flask import Flask
+    app = Flask(__name__)
+    app.register_blueprint(bp)
     app.run(debug=True)
