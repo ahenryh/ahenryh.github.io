@@ -1,0 +1,39 @@
+<div class="card">
+  <div class="card-body">
+    <h3 class="mb-3">% et top 3 des étrangers dans la population</h3>
+
+    <div class="mb-2">
+      <label for="regional-map-region-select" class="form-label">Choisir une région</label>
+      <select id="regional-map-region-select" class="form-select">
+        {% for r in regions %}
+          <option value="{{ r }}" {% if r == selected_region %}selected{% endif %}>{{ r }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div id="regional-map-container">
+      {{ map_html | safe }}
+    </div>
+
+    <script>
+      async function fetchRegionalMapFor(region){
+        try{
+          const url = new URL("{{ url_for('mongraph.map_fragment') }}", window.location.origin);
+          if(region) url.searchParams.set('region', region);
+          const resp = await fetch(url);
+          if(!resp.ok) throw new Error('HTTP ' + resp.status);
+          const data = await resp.json();
+          if(data.error){ throw new Error(data.error); }
+          document.getElementById('regional-map-container').innerHTML = data.map_html;
+        }catch(e){
+          console.error('Erreur AJAX map:', e);
+          document.getElementById('regional-map-container').innerHTML = '<div class="alert alert-danger">Impossible de charger la carte.</div>';
+        }
+      }
+
+      document.getElementById('regional-map-region-select').addEventListener('change', function(e){
+        fetchRegionalMapFor(e.target.value);
+      });
+    </script>
+  </div>
+</div>

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Carte des étrangers</title>
+</head>
+<body>
+    <h1>Carte des nationalités étrangères par EPCI</h1>
+
+    <form method="POST">
+        <label for="region">Choisir une région :</label>
+        <select name="region" onchange="this.form.submit()">
+            {% for region in regions %}
+                <option value="{{ region }}" {% if region == selected_region %}selected{% endif %}>{{ region }}</option>
+            {% endfor %}
+        </select>
+    </form>
+
+    <div style="width:100%; height:600px;">
+        {{ mon_block_html|safe }}
+    </div>
+</body>
+</html>
